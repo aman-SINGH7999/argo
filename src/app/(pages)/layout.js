@@ -6,7 +6,7 @@ export default function layout({children}) {
   return (
     <>
       <Navbar />
-      <div className='px-20'>
+      <div className=''>
           {children}
       </div>
       <Footer />      
