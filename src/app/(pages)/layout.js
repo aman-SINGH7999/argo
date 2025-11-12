@@ -6,7 +6,7 @@ export default function layout({children}) {
   return (
     <>
       <Navbar />
-      <div className=''>
+      <div className='bg-gray-50'>
           {children}
       </div>
       <Footer />      

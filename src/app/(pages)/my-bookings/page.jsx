@@ -1,7 +1,13 @@
-import React from 'react'
+// app/page.js
+'use client';
+import MyBooking from "@/components/booking/MyBooking";
 
-export default function page() {
+
+
+export default function Page() {
   return (
-    <div>My Bookings</div>
-  )
+    <div className="p-6 max-w-7xl mx-auto">
+      <MyBooking />
+    </div>
+  );
 }
