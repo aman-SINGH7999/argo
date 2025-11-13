@@ -8,7 +8,7 @@ export default function TripDetailsCard() {
       {/* Image */}
       <div className="relative h-[500px] w-full">
         <Image
-          src="/image1.png"
+          src="/flight3.jpg"
           alt="New York City Skyline at Sunset"
           fill
           className='object-cover rounded-md'

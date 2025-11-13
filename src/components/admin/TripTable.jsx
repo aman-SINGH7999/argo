@@ -1,68 +1,162 @@
 // app/components/TripTable.js
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FaEdit, FaTrash, FaPlus } from 'react-icons/fa';
+import axios from 'axios';
+import TripFormModal from './TripFormModal';
 
-const trips = [
-  { id: 'T001', route: 'London to Paris', departure: '06:00 AM', arrival: '04:00 PM', price: '$70.00', seats: 50 },
-  { id: 'T002', route: 'Berlin to Munich', departure: '08:30 AM', arrival: '03:00 PM', price: '$120.00', seats: 50 },
-  { id: 'T003', route: 'Rome to Florence', departure: '10:00 AM', arrival: '01:00 PM', price: '$45.00', seats: 60 },
+const initialTrips = [
+  { _id: 'local-1', from: 'London', to: 'Paris', departureAt: '', arrivalAt: '', pricePerSeat: 70, totalSeats: 50 },
+  { _id: 'local-2', from: 'Berlin', to: 'Munich', departureAt: '', arrivalAt: '', pricePerSeat: 120, totalSeats: 50 },
+  { _id: 'local-3', from: 'Rome', to: 'Florence', departureAt: '', arrivalAt: '', pricePerSeat: 45, totalSeats: 60 },
 ];
 
 export default function TripTable() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTrip, setEditingTrip] = useState(null); // null or trip object
+  const [trips, setTrips] = useState(initialTrips);
+  const [loading, setLoading] = useState(false);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    from: '',
-    to: '',
-    dateTime: '',
-    price: '',
-    totalSeat: '',
-  });
+  // show only first N by default
+  const DEFAULT_SHOW_COUNT = 3;
+  const [showAll, setShowAll] = useState(false);
 
-  const openModal = () => {
-    // Reset form on open (optional)
-    setFormData({ from: '', to: '', dateTime: '', price: '', totalSeat: '' });
+  // fetch real trips on mount (optional) — keeps UI same but replaces sample data
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+        const res = await axios.get(`${API_BASE}/trips`);
+        const got = res?.data?.trips;
+        if (Array.isArray(got) && got.length) {
+          // normalize objects to match our table shape
+          const normalized = got.map(t => ({
+            _id: t._id,
+            from: t.from,
+            to: t.to,
+            departureAt: t.departureAt,
+            arrivalAt: t.arrivalAt,
+            pricePerSeat: t.pricePerSeat,
+            totalSeats: t.totalSeats,
+          }));
+          setTrips(normalized);
+        }
+      } catch (err) {
+        console.warn('Could not fetch trips, using sample data.', err.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const openAdd = () => {
+    setEditingTrip(null);
     setIsModalOpen(true);
   };
 
-  const closeModal = () => setIsModalOpen(false);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+  const openEdit = (trip) => {
+    setEditingTrip(trip);
+    setIsModalOpen(true);
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    
-    // Log form data
-    console.log('New Trip Data:', formData);
-    
-    // Alert dekhna hai toh uncomment karo:
-    alert(`Trip added!\nFrom: ${formData.from}\nTo: ${formData.to}\nPrice: ${formData.price}\nSeats: ${formData.totalSeat}`);
-
-    // Modal band karo
-    closeModal();
-
-    // Yahan tum API call ya localStorage bhi kar sakte ho
+  const handleModalClose = () => {
+    setEditingTrip(null);
+    setIsModalOpen(false);
   };
+
+  // onSaved callback from modal
+  const handleSaved = ({ type, trip }) => {
+    if (!trip) return;
+    if (type === 'create') {
+      // prepend new trip
+      setTrips(prev => [{ 
+        _id: trip._id,
+        from: trip.from,
+        to: trip.to,
+        departureAt: trip.departureAt,
+        arrivalAt: trip.arrivalAt,
+        pricePerSeat: trip.pricePerSeat,
+        totalSeats: trip.totalSeats,
+      }, ...prev]);
+    } else if (type === 'update') {
+      setTrips(prev => prev.map(t => (t._id === trip._id ? {
+        _id: trip._id,
+        from: trip.from,
+        to: trip.to,
+        departureAt: trip.departureAt,
+        arrivalAt: trip.arrivalAt,
+        pricePerSeat: trip.pricePerSeat,
+        totalSeats: trip.totalSeats,
+      } : t)));
+    }
+  };
+
+  const handleDelete = async (trip) => {
+    if (!confirm('Are you sure you want to delete this trip?')) return;
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      await axios.delete(`${API_BASE}/trips/${trip._id}`, { headers });
+      setTrips(prev => prev.filter(t => t._id !== trip._id));
+      alert('Trip deleted');
+    } catch (err) {
+      console.error('Delete error:', err);
+      const msg = err.response?.data?.message || err.message || 'Failed to delete';
+      alert(msg);
+    }
+  };
+
+  // format time for table display
+  const fmtTime = (iso) => {
+    try {
+      if (!iso) return '-';
+      const d = new Date(iso);
+      let hours = d.getHours();
+      const minutes = d.getMinutes().toString().padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      if (hours === 0) hours = 12;
+      return `${hours.toString().padStart(2, '0')}:${minutes} ${ampm}`;
+    } catch {
+      return iso || '-';
+    }
+  };
+
+  // format date for table display (e.g., "12 Nov 2025")
+  const fmtDate = (iso) => {
+    try {
+      if (!iso) return '-';
+      const d = new Date(iso);
+      return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+      return iso || '-';
+    }
+  };
+
+  // create display id like T001 based on current index (1-based)
+  const displayId = (index) => `T${String(index + 1).padStart(3, '0')}`;
+
+  // decide which trips to show in the table
+  const displayedTrips = showAll ? trips : trips.slice(0, DEFAULT_SHOW_COUNT);
 
   return (
     <div className="">
       <div className="p-4 border-b border-gray-200 flex justify-between items-center">
         <h3 className="font-semibold text-lg">Trip Management</h3>
         <div className="flex space-x-2">
-          <button className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700">
-            All Trips
+          <button
+            onClick={() => setShowAll(s => !s)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700"
+          >
+            {showAll ? 'Show Less' : 'All Trips'}
           </button>
           <button
-            onClick={openModal}
+            onClick={openAdd}
             className="border border-blue-600 text-blue-600 px-4 py-2 rounded-md text-sm hover:bg-blue-50 flex items-center space-x-1"
           >
             <FaPlus className="w-4 h-4" />
@@ -77,6 +171,7 @@ export default function TripTable() {
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Route</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Departure</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Arrival</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
@@ -85,130 +180,45 @@ export default function TripTable() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {trips.map((trip) => (
-              <tr key={trip.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{trip.id}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{trip.route}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{trip.departure}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{trip.arrival}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{trip.price}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{trip.seats}</td>
+            {displayedTrips.map((trip, idx) => (
+              <tr key={trip._id}>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{displayId(idx)}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{`${trip.from} to ${trip.to}`}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fmtDate(trip.departureAt)}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fmtTime(trip.departureAt)}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fmtTime(trip.arrivalAt)}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{`$${trip.pricePerSeat ?? '-'}`}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{trip.totalSeats ?? '-'}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <div className="flex space-x-2">
-                    <button className="text-gray-600 hover:text-gray-800">
-                      <FaEdit className="" />
+                    <button onClick={() => openEdit(trip)} className="text-gray-600 hover:text-gray-800">
+                      <FaEdit />
                     </button>
-                    <button className="text-red-600 hover:text-red-800">
-                      <FaTrash className="" />
+                    <button onClick={() => handleDelete(trip)} className="text-red-600 hover:text-red-800">
+                      <FaTrash />
                     </button>
                   </div>
                 </td>
               </tr>
             ))}
+            {(!trips || trips.length === 0) && (
+              <tr>
+                <td colSpan={8} className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500">
+                  No trips found.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
       {/* Modal */}
-      {isModalOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 bg-opacity-50 flex items-center justify-center p-4 z-50"
-          onClick={closeModal}
-        >
-          <div 
-            className="bg-white rounded-xl shadow-lg w-full max-w-md p-6 relative"
-            onClick={(e) => e.stopPropagation()} // Modal ke andar click karne se close nahi hoga
-          >
-            <h4 className="text-lg font-semibold mb-4">Trip Details</h4>
-
-            <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">From</label>
-                  <input
-                    type="text"
-                    name="from"
-                    value={formData.from}
-                    onChange={handleChange}
-                    placeholder="Departure Location"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">To</label>
-                  <input
-                    type="text"
-                    name="to"
-                    value={formData.to}
-                    onChange={handleChange}
-                    placeholder="Arrival Destination"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date & Time</label>
-                  <input
-                    type="datetime-local"
-                    name="dateTime"
-                    value={formData.dateTime}
-                    onChange={handleChange}
-                    placeholder="e.g. 12 Nov 2025, 06:00 AM"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
-                  <input
-                    type="number"
-                    min="0"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleChange}
-                    placeholder="$"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Total Seat</label>
-                <input
-                  type="number"
-                  name="totalSeat"
-                  value={formData.totalSeat}
-                  onChange={handleChange}
-                  placeholder="Total no. of seats"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  min="1"
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition"
-              >
-                Submit
-              </button>
-            </form>
-
-            {/* Close (X) button */}
-            <button
-              onClick={closeModal}
-              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-xl font-bold"
-            >
-              &times;
-            </button>
-          </div>
-        </div>
-      )}
+      <TripFormModal
+        open={isModalOpen}
+        initialData={editingTrip}
+        onClose={handleModalClose}
+        onSaved={handleSaved}
+      />
     </div>
   );
 }

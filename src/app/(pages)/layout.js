@@ -1,3 +1,4 @@
+import RequireAuth from '@/components/auth/RequireAuth'
 import Footer from '@/components/Footer'
 import Navbar from '@/components/Navbar'
 import React from 'react'
@@ -7,7 +8,9 @@ export default function layout({children}) {
     <>
       <Navbar />
       <div className='bg-gray-50'>
-          {children}
+          <RequireAuth>
+            {children}
+          </RequireAuth>
       </div>
       <Footer />      
     </>
